@@ -1,9 +1,8 @@
 // ==UserScript==
 // @name         LinkedIn Jobs - Auto Filter
 // @namespace    http://tampermonkey.net/
-// @version      1.2
+// @version      1.3
 // @description  Auto-dismiss and highlight LinkedIn job cards matching predefined roles or companies
-// @author       You
 // @match        https://www.linkedin.com/jobs/*
 // @grant        none
 // ==/UserScript==
@@ -11,76 +10,69 @@
 (function () {
   'use strict';
 
-  // ============================================================
-  //  CONFIGURE YOUR FILTERS HERE
-  // ============================================================
-
-  const FILTERED_ROLES = [
-  ];
+  const FILTERED_ROLES = [];
 
   const FILTERED_COMPANIES = [
   ];
 
-  // 'highlight' = orange border + faded (testing mode)
-  // 'hide'      = display:none
-  const VISUAL_MODE = 'highlight';
-
+  const VISUAL_MODE = 'highlight'; // 'highlight' or 'hide'
   const CLICK_DISMISS = true;
   const DISMISS_DELAY_MS = 600;
-
-  // ============================================================
 
   function matchesFilter(text, filters) {
     return filters.some(f => text.toLowerCase().includes(f.toLowerCase()));
   }
 
-  function getJobTitle(card) {
-    const el = card.querySelector('.artdeco-entity-lockup__title');
+  // Resolve the actual .job-card-container element regardless of wrapper
+  function getContainer(el) {
+    if (el.classList.contains('job-card-container')) return el;
+    return el.querySelector('.job-card-container');
+  }
+
+  function getJobTitle(container) {
+    const el = container.querySelector('.artdeco-entity-lockup__title a, .artdeco-entity-lockup__title');
     return el ? el.textContent.trim() : '';
   }
 
-  function getCompany(card) {
-    const el = card.querySelector('.artdeco-entity-lockup__subtitle');
+  function getCompany(container) {
+    const el = container.querySelector('.artdeco-entity-lockup__subtitle');
     return el ? el.textContent.trim() : '';
   }
 
-  function isDismissed(card) {
-    const container = card.querySelector('.job-card-container');
-    return container && container.classList.contains('job-card-list--is-dismissed');
+  function isDismissed(container) {
+    return container.classList.contains('job-card-list--is-dismissed');
   }
 
-  function applyVisual(card) {
+  function applyVisual(container) {
     if (VISUAL_MODE === 'hide') {
-      card.style.display = 'none';
+      container.style.display = 'none';
     } else {
-      card.style.outline = '3px solid orange';
-      card.style.opacity = '0.4';
+      container.style.outline = '3px solid orange';
+      container.style.opacity = '0.4';
     }
   }
 
   const dismissQueue = [];
 
-  function processCard(card) {
-    // KEY FIX: skip empty shell cards — only process once .job-card-container exists
-    if (!card.querySelector('.job-card-container')) return;
+  function processCard(el) {
+    const container = getContainer(el);
+    if (!container) return;
+    if (container.dataset.lfProcessed) return;
+    container.dataset.lfProcessed = 'true';
 
-    // Skip already processed cards
-    if (card.dataset.lfProcessed) return;
-    card.dataset.lfProcessed = 'true';
-
-    if (isDismissed(card)) {
-      applyVisual(card);
+    if (isDismissed(container)) {
+      applyVisual(container);
       return;
     }
 
-    const title   = getJobTitle(card);
-    const company = getCompany(card);
+    const title   = getJobTitle(container);
+    const company = getCompany(container);
     const matched = matchesFilter(title, FILTERED_ROLES) || matchesFilter(company, FILTERED_COMPANIES);
 
     if (matched) {
       console.log(`[LI Filter] Matched: "${title.replace(/\s+/g,' ').substring(0, 40)}" @ "${company}"`);
-      applyVisual(card);
-      if (CLICK_DISMISS) dismissQueue.push(card);
+      applyVisual(container);
+      if (CLICK_DISMISS) dismissQueue.push(container);
     }
   }
 
@@ -89,8 +81,8 @@
     if (dismissRunning) return;
     dismissRunning = true;
     while (dismissQueue.length > 0) {
-      const card = dismissQueue.shift();
-      const btn = card.querySelector('button[aria-label*="Dismiss"]');
+      const container = dismissQueue.shift();
+      const btn = container.querySelector('button[aria-label*="Dismiss"]');
       if (btn) {
         btn.click();
         await new Promise(r => setTimeout(r, DISMISS_DELAY_MS));
@@ -100,7 +92,11 @@
   }
 
   function runFilter() {
-    document.querySelectorAll('main li.scaffold-layout__list-item').forEach(processCard);
+    // Cover both search-page and collections-page layouts
+    const cards = document.querySelectorAll(
+      'main li.scaffold-layout__list-item, main li[data-occludable-job-id], main div.job-card-container'
+    );
+    cards.forEach(processCard);
     processDismissQueue();
   }
 
@@ -116,5 +112,4 @@
     }
   }
   startObserving();
-
 })();
