@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LinkedIn Jobs - Auto Filter
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @description  Auto-dismiss and highlight LinkedIn job cards matching predefined roles or companies
 // @match        https://www.linkedin.com/jobs/*
 // @grant        none
@@ -52,6 +52,45 @@
     }
   }
 
+  // --- Top Picks / collections tab (obfuscated markup, no artdeco classes) ---
+
+  function getCollectionTitle(card) {
+    const btn = card.querySelector('button[aria-label*="Dismiss"]');
+    if (!btn) return '';
+    return btn.getAttribute('aria-label')
+      .replace(/^Dismiss\s+/i, '')
+      .replace(/\s+job\s*$/i, '')
+      .trim();
+  }
+
+  function getCollectionCompany(card) {
+    // Company <p> is immediately before a sibling <p> whose text is "•"
+    for (const p of card.querySelectorAll('p')) {
+      const next = p.nextElementSibling;
+      if (next && next.tagName === 'P' && next.textContent.trim() === '•') {
+        return p.textContent.trim();
+      }
+    }
+    return '';
+  }
+
+  function processCollectionCard(card) {
+    if (card.dataset.lfProcessed) return;
+    card.dataset.lfProcessed = 'true';
+
+    const title   = getCollectionTitle(card);
+    const company = getCollectionCompany(card);
+    const matched = matchesFilter(title, FILTERED_ROLES) || matchesFilter(company, FILTERED_COMPANIES);
+
+    if (matched) {
+      console.log(`[LI Filter] Collection match: "${title.replace(/\s+/g,' ').substring(0, 40)}" @ "${company}"`);
+      applyVisual(card);
+      if (CLICK_DISMISS) dismissQueue.push(card);
+    }
+  }
+
+  // --- Standard job list cards ---
+
   const dismissQueue = [];
 
   function processCard(el) {
@@ -92,11 +131,14 @@
   }
 
   function runFilter() {
-    // Cover both search-page and collections-page layouts
-    const cards = document.querySelectorAll(
+    // Standard search/recommended pages
+    document.querySelectorAll(
       'main li.scaffold-layout__list-item, main li[data-occludable-job-id], main div.job-card-container'
-    );
-    cards.forEach(processCard);
+    ).forEach(processCard);
+
+    // Top Picks tab — obfuscated markup, card root is an <a> with currentJobId in href
+    document.querySelectorAll('main a[href*="currentJobId"]').forEach(processCollectionCard);
+
     processDismissQueue();
   }
 
