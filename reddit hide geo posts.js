@@ -75,10 +75,12 @@
   }
 
   function scanPosts() {
-    // recommendation-source="users_in_geo_also_like" identifies geo posts
+    // recommendation-source contains "geo" for all geo recommendation types:
+    // "users_in_geo_also_like" (Popular in your country)
+    // "geo_explore_subreddits" (Popular near you)
     document
       .querySelectorAll(
-        'shreddit-post[recommendation-source="users_in_geo_also_like"]:not([data-qh-geo-hidden])',
+        "shreddit-post[recommendation-source*='geo']:not([data-qh-geo-hidden])",
       )
       .forEach((post) => {
         // collapse the wrapping <article> so the whole card disappears cleanly
