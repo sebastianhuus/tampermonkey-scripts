@@ -144,14 +144,30 @@
 
   window.addEventListener('load', () => setTimeout(runFilter, 1500));
 
+  let activeObserver = null;
+
   function startObserving() {
     const mainEl = document.querySelector('main');
     if (mainEl) {
-      const observer = new MutationObserver(runFilter);
-      observer.observe(mainEl, { childList: true, subtree: true });
+      if (activeObserver) activeObserver.disconnect();
+      activeObserver = new MutationObserver(runFilter);
+      activeObserver.observe(mainEl, { childList: true, subtree: true });
     } else {
       setTimeout(startObserving, 500);
     }
   }
   startObserving();
+
+  // Re-run on SPA navigation (LinkedIn uses History API — no page reload on email link clicks)
+  function onSpaNav() {
+    if (location.pathname.startsWith('/jobs')) {
+      setTimeout(() => { startObserving(); runFilter(); }, 1500);
+    }
+  }
+
+  const _push = history.pushState.bind(history);
+  const _replace = history.replaceState.bind(history);
+  history.pushState = function (...args) { _push(...args); onSpaNav(); };
+  history.replaceState = function (...args) { _replace(...args); onSpaNav(); };
+  window.addEventListener('popstate', onSpaNav);
 })();
